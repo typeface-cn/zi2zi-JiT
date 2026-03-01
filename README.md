@@ -7,4 +7,3 @@
 <p align="center">
   <img src="assets/showcase.png" alt="showcase">
 </p>
-g

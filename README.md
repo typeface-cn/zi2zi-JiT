@@ -5,6 +5,10 @@
 <h2 align="center">zi2zi-JiT: Font Synthesis with Pixel Space Diffusion Transformers</h2>
 
 <p align="center">
+  <a href="README_zh.md">中文版</a>
+</p>
+
+<p align="center">
   <img src="assets/showcase.png" width="80%">
 </p>
 

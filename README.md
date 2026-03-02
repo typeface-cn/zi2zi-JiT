@@ -47,7 +47,9 @@ pip install -e .
 
 ### 下载基础模型
 
-下载预训练检查点并放置在 `models/` 目录下：
+下载预训练检查点 [zi2zi-JiT-B-16.pth](https://pan.quark.cn/s/47c7dede2460) 或
+[zi2zi-JiT-L-16.pth](https://pan.quark.cn/s/ba3b8bfa567b) 并放置在 `models/` 目录下：
+
 
 ```bash
 mkdir -p models

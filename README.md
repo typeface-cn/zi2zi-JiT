@@ -123,7 +123,7 @@ python scripts/generate_glyph_dataset.py \
 
 ### LoRA Fine-Tuning
 
-Fine-tune a pretrained model on a single GPU with LoRA. The example below uses JiT-B/16 with batch size 16, which requires roughly 4 GB of VRAM:
+Fine-tune a pretrained model on a single GPU with LoRA. Fine-tuning a single font typically takes less than one hour on a single H100. The example below uses JiT-B/16 with batch size 16, which requires roughly 4 GB of VRAM:
 
 ```bash
 python lora_single_gpu_finetune_jit.py \
@@ -187,6 +187,14 @@ python scripts/compute_pairwise_metrics.py \
     --device cuda \
     run/lora_ft_sample_single/heun-steps50-cfg2.6-interval0.0-1.0-image400-res256/step_10/compare/
 ```
+
+## Works
+
+Fonts created with zi2zi-JiT:
+
+- [Zi-QuanHengDuLiang (权衡度量体)](https://github.com/kaonashi-tyc/Zi-QuanHengDuLiang)
+- [Zi-XuanZongTi (玄宗体)](https://github.com/kaonashi-tyc/Zi-XuanZongTi)
+- [Eva-Ming-Simplified (Eva明朝简体)](https://github.com/kaonashi-tyc/Eva-Ming-Simplified)
 
 ## Gallery
 

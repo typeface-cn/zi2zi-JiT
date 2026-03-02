@@ -49,9 +49,13 @@ conda activate zi2zi-jit
 pip install -e .
 ```
 
-### Download Base Model
+### Download
 
-Download a pretrained checkpoint and place it under `models/`:
+Pretrained checkpoints are available on Google Drive:
+
+**[Download Models](https://drive.google.com/drive/folders/1QJi2ihxDBK2NF-jCE07g59YwuUTAd-iY)**
+
+Save desired checkpoint and place it under `models/`:
 
 ```bash
 mkdir -p models

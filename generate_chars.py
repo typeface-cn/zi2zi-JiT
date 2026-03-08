@@ -12,6 +12,9 @@ Usage:
     # Single GPU
     python generate_chars.py --checkpoint path/to/checkpoint.pth --test_npz test.npz --output_dir ./output
 
+    # Apple Silicon (PyTorch MPS backend)
+    python generate_chars.py --device mps --checkpoint path/to/checkpoint.pth --test_npz test.npz --output_dir ./output
+
     # Multi-GPU (distributed)
     torchrun --nproc_per_node=4 generate_chars.py --checkpoint path/to/checkpoint.pth --test_npz test.npz
 
@@ -20,13 +23,13 @@ Usage:
 """
 import argparse
 import os
+from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
 import numpy as np
 import cv2
 
-from denoiser import Denoiser
 import util.misc as misc
 from util.lora_utils import inject_lora, _is_lora_state_dict
 
@@ -41,6 +44,9 @@ def get_args_parser():
                         help='Path to test npz file')
     parser.add_argument('--output_dir', type=str, default='./eval_output',
                         help='Output directory for generated images')
+    parser.add_argument('--device', type=str, default='auto',
+                        choices=['auto', 'cpu', 'cuda', 'mps'],
+                        help='Execution device (auto prefers cuda, then mps, then cpu)')
 
     # Model
     parser.add_argument('--model', type=str, default=None,
@@ -86,15 +92,81 @@ def get_args_parser():
     return parser
 
 
+def _mps_is_available():
+    return hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+
+
+def resolve_device(device_name):
+    if device_name == 'auto':
+        if torch.cuda.is_available():
+            return torch.device('cuda')
+        if _mps_is_available():
+            return torch.device('mps')
+        return torch.device('cpu')
+
+    if device_name == 'cuda' and not torch.cuda.is_available():
+        raise RuntimeError('CUDA requested but is not available on this machine.')
+    if device_name == 'mps' and not _mps_is_available():
+        raise RuntimeError('MPS requested but is not available on this machine.')
+
+    return torch.device(device_name)
+
+
+def _distributed_env_present():
+    return (
+        'RANK' in os.environ and 'WORLD_SIZE' in os.environ
+    ) or 'SLURM_PROCID' in os.environ or 'OMPI_COMM_WORLD_RANK' in os.environ
+
+
+def _identity_compile(fn=None, *args, **kwargs):
+    if fn is None:
+        return lambda inner: inner
+    return fn
+
+
+def patch_torch_for_device(device):
+    if device.type == 'cuda':
+        return
+
+    if device.type == 'mps':
+        os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+
+    target = torch.device(device)
+
+    def tensor_cuda(self, *args, **kwargs):
+        return self.to(target)
+
+    def module_cuda(self, *args, **kwargs):
+        return self.to(target)
+
+    torch.Tensor.cuda = tensor_cuda
+    torch.nn.Module.cuda = module_cuda
+
+    if hasattr(torch, 'compile'):
+        torch.compile = _identity_compile
+
+    torch.cuda.amp.autocast = lambda *args, **kwargs: nullcontext()
+
+
 def main(args):
-    # Initialize distributed if available
-    misc.init_distributed_mode(args)
-    device = torch.device('cuda')
+    device = resolve_device(args.device)
+    use_cuda_amp = device.type == 'cuda'
+
+    if device.type == 'cuda':
+        misc.init_distributed_mode(args)
+    else:
+        if args.dist_on_itp or _distributed_env_present():
+            raise RuntimeError('Distributed generation currently requires CUDA. Use single-process mode for MPS/CPU inference.')
+        args.distributed = False
+
+    patch_torch_for_device(device)
+
+    from denoiser import Denoiser
 
     world_size = misc.get_world_size()
     local_rank = misc.get_rank()
 
-    print(f"Rank {local_rank}/{world_size}: Initializing...")
+    print(f"Rank {local_rank}/{world_size}: Initializing on {device}...")
 
     # ============ Load Checkpoint ============
     print(f"Loading checkpoint from {args.checkpoint}")
@@ -176,6 +248,7 @@ def main(args):
     print(f"  Num images:      {args.num_images or 'all'}")
     print(f"  Pairwise:        {args.pairwise or 'off'}")
     print(f"  World size:      {world_size}")
+    print(f"  Device:          {device}")
     print("=" * 50)
 
     # ============ Load Test Data ============
@@ -285,7 +358,7 @@ def main(args):
         labels = (font_labels_batch, char_labels_batch, style_images_batch, content_images_batch)
 
         # Generate
-        with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+        with (torch.amp.autocast('cuda', dtype=torch.bfloat16) if use_cuda_amp else nullcontext()):
             generated = model.generate(labels)
 
         if world_size > 1:
